@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+/src/generated/prisma
 /.pnp
 .pnp.*
 .yarn/*
@@ -23,6 +24,13 @@
 # misc
 .DS_Store
 *.pem
+*.key
+*.dump
+*.backup
+*.sql.gz
+/backups/
+/secrets/
+/.production-smoke/
 
 # debug
 npm-debug.log*
@@ -32,6 +40,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+!.env.production.example
 
 # vercel
 .vercel

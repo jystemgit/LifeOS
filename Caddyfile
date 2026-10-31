@@ -1,0 +1,14 @@
+{
+	email {$OWNER_EMAIL}
+}
+
+{$LIFEOS_DOMAIN} {
+	encode zstd gzip
+	header Strict-Transport-Security "max-age=31536000"
+	request_body {
+		max_size 8MB
+	}
+	reverse_proxy app:3000 {
+		flush_interval -1
+	}
+}

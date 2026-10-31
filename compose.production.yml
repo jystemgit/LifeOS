@@ -1,0 +1,95 @@
+x-application: &application
+  environment:
+    NODE_ENV: production
+    DATABASE_URL: postgresql://${POSTGRES_USER:?Set POSTGRES_USER}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:?Set POSTGRES_DB}
+    BETTER_AUTH_URL: https://${LIFEOS_DOMAIN:?Set LIFEOS_DOMAIN}
+    BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET}
+    OWNER_EMAIL: ${OWNER_EMAIL:?Set OWNER_EMAIL}
+    MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
+    MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET:-}
+    MICROSOFT_REDIRECT_URI: ${MICROSOFT_REDIRECT_URI:-}
+    MICROSOFT_TENANT_ID: ${MICROSOFT_TENANT_ID:-common}
+    GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+    GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+    GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+    TASK_PUSH_ENABLED: ${TASK_PUSH_ENABLED:-false}
+    TASK_PUSH_VAPID_PUBLIC_KEY: ${TASK_PUSH_VAPID_PUBLIC_KEY:-}
+    TASK_PUSH_VAPID_PRIVATE_KEY: ${TASK_PUSH_VAPID_PRIVATE_KEY:-}
+    TASK_PUSH_VAPID_SUBJECT: ${TASK_PUSH_VAPID_SUBJECT:-}
+  networks: [private]
+
+services:
+  postgres:
+    image: postgres:17-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
+      POSTGRES_USER: lifeos_admin
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Set POSTGRES_ADMIN_PASSWORD}
+      LIFEOS_DB_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      LIFEOS_DB_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - database:/var/lib/postgresql/data
+      - ./scripts/initialize-postgres.sql:/docker-entrypoint-initdb.d/10-lifeos.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [private]
+
+  app:
+    <<: *application
+    image: lifeos:${LIFEOS_IMAGE_TAG:-local}
+    build:
+      context: .
+      target: runner
+    init: true
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    stop_grace_period: 30s
+
+  operations:
+    <<: *application
+    image: lifeos-operations:${LIFEOS_IMAGE_TAG:-local}
+    build:
+      context: .
+      target: operations
+    profiles: [tools]
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      LIFEOS_DOMAIN: ${LIFEOS_DOMAIN:?Set LIFEOS_DOMAIN}
+      OWNER_EMAIL: ${OWNER_EMAIL:?Set OWNER_EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - certificates:/data
+      - caddy-config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    networks: [private]
+
+networks:
+  private:
+
+volumes:
+  database:
+  certificates:
+  caddy-config:

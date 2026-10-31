@@ -1,0 +1,58 @@
+name: Verify release
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-bookworm
+        env:
+          POSTGRES_USER: lifeos
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: lifeos_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lifeos -d lifeos_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://lifeos:ci-only-password@localhost:5432/lifeos_test
+      TASK_MANAGEMENT_TEST_DATABASE_URL: postgresql://lifeos:ci-only-password@localhost:5432/lifeos_test
+      DAILY_PLANNING_TEST_DATABASE_URL: postgresql://lifeos:ci-only-password@localhost:5432/lifeos_test
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - name: Install matching PostgreSQL backup clients
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+      - run: npm run db:generate
+      - run: npm run db:deploy
+      - run: npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm audit --omit=dev --audit-level=moderate
+      - run: npm run build
+      - name: Build production runtime and operations images
+        run: |
+          docker build --target runner -t lifeos:ci .
+          docker build --target operations -t lifeos-operations:ci .
+      - run: npm run test:production

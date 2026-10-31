@@ -1,0 +1,428 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum TaskStatus {
+  INBOX
+  TODO
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model User {
+  id               String   @id @default(cuid())
+  name             String
+  email            String   @unique
+  emailVerified    Boolean  @default(false)
+  image            String?
+  twoFactorEnabled Boolean  @default(false)
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(3)
+
+  tasks             Task[]
+  sessions          Session[]
+  accounts          Account[]
+  twofactors        TwoFactor[]
+  dailyPlans        DailyPlan[]
+  taskLists         TaskList[]
+  taskFolders       TaskFolder[]
+  taskAssignments   TaskDailyAssignment[]
+  taskHistory       TaskActivityHistory[]
+  taskViews         TaskSavedView[]
+  microsoft         MicrosoftConnection?
+  googleCalendar    GoogleCalendarConnection?
+  googleEvents      GoogleTaskEvent[]
+  pushSubscriptions TaskPushSubscription[]
+  pushDeliveries    TaskPushDelivery[]
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  expiresAt DateTime @db.Timestamptz(3)
+  token     String   @unique
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  ipAddress String?
+  userAgent String?
+  userId    String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  userId                String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime? @db.Timestamptz(3)
+  refreshTokenExpiresAt DateTime? @db.Timestamptz(3)
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime  @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+model TwoFactor {
+  id                      String    @id @default(cuid())
+  secret                  String
+  backupCodes             String
+  userId                  String
+  verified                Boolean   @default(true)
+  failedVerificationCount Int       @default(0)
+  lockedUntil             DateTime? @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([secret])
+  @@index([userId])
+  @@map("twoFactor")
+}
+
+model Task {
+  id                     String       @id @default(cuid())
+  userId                 String
+  parentTaskId           String?
+  title                  String
+  description            String       @default("")
+  status                 TaskStatus   @default(INBOX)
+  priority               TaskPriority @default(MEDIUM)
+  estimatedMinutes       Int?
+  deadline               DateTime?    @db.Timestamptz(3)
+  scheduledDate          DateTime?    @db.Date
+  completedAt            DateTime?    @db.Timestamptz(3)
+  recurrenceRule         String?
+  externalIds            Json         @default("{}")
+  deletedAt              DateTime?    @db.Timestamptz(3)
+  archivedAt             DateTime?    @db.Timestamptz(3)
+  reminderAcknowledgedAt DateTime?    @db.Timestamptz(3)
+  createdAt              DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime     @updatedAt @db.Timestamptz(3)
+  notes                  String       @default("")
+  listId                 String?
+  important              Boolean      @default(false)
+  urgent                 Boolean      @default(false)
+  eisenhowerClassified   Boolean      @default(false)
+  position               Int          @default(0)
+  startTime              String?
+  endTime                String?
+  reminderAt             DateTime?    @db.Timestamptz(3)
+  tags                   String[]     @default([])
+  category               String       @default("")
+  customFields           Json         @default("{}")
+  links                  String[]     @default([])
+  version                Int          @default(0)
+  recurrence             Json?
+  recurrenceSourceId     String?
+  occurrenceDate         DateTime?    @db.Date
+
+  user           User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentTask     Task?                      @relation("Subtasks", fields: [parentTaskId], references: [id], onDelete: SetNull)
+  subtasks       Task[]                     @relation("Subtasks")
+  list           TaskList?                  @relation(fields: [listId, userId], references: [id, userId], onDelete: NoAction)
+  assignments    TaskDailyAssignment[]
+  history        TaskActivityHistory[]
+  attachments    TaskAttachment[]
+  sync           TaskSynchronizationRecord?
+  googleEvent    GoogleTaskEvent?
+  microsoftStep  MicrosoftChecklistMapping?
+  pushDeliveries TaskPushDelivery[]
+
+  @@unique([recurrenceSourceId, occurrenceDate])
+  @@unique([id, userId])
+  @@index([userId, status, scheduledDate])
+  @@index([userId, deadline])
+  @@index([listId, position])
+  @@index([userId, important, urgent])
+  @@index([userId, reminderAt])
+  @@index([userId, archivedAt])
+}
+
+model TaskPushSubscription {
+  id             String             @id @default(cuid())
+  userId         String
+  endpoint       String             @unique
+  p256dh         String
+  auth           String
+  vapidPublicKey String
+  locale         String             @default("es")
+  expiresAt      DateTime?          @db.Timestamptz(3)
+  revokedAt      DateTime?          @db.Timestamptz(3)
+  lastError      String?
+  createdAt      DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime           @updatedAt @db.Timestamptz(3)
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deliveries     TaskPushDelivery[]
+
+  @@unique([id, userId])
+  @@index([userId, revokedAt])
+}
+
+enum TaskPushDeliveryStatus {
+  PENDING
+  RETRY
+  ACCEPTED
+  CANCELLED
+  FAILED
+}
+
+model TaskPushDelivery {
+  id             String                 @id @default(cuid())
+  userId         String
+  taskId         String
+  subscriptionId String
+  reminderAt     DateTime               @db.Timestamptz(3)
+  status         TaskPushDeliveryStatus @default(PENDING)
+  attempts       Int                    @default(0)
+  availableAt    DateTime               @default(now()) @db.Timestamptz(3)
+  lockedUntil    DateTime?              @db.Timestamptz(3)
+  leaseToken     String?
+  acceptedAt     DateTime?              @db.Timestamptz(3)
+  lastError      String?
+  httpStatus     Int?
+  createdAt      DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime               @updatedAt @db.Timestamptz(3)
+  user           User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task           Task                   @relation(fields: [taskId, userId], references: [id, userId], onDelete: Cascade)
+  subscription   TaskPushSubscription   @relation(fields: [subscriptionId, userId], references: [id, userId], onDelete: Cascade)
+
+  @@unique([taskId, reminderAt, subscriptionId])
+  @@index([status, availableAt])
+}
+
+model TaskPushWorkerState {
+  id            String    @id
+  lastStartedAt DateTime? @db.Timestamptz(3)
+  lastSuccessAt DateTime? @db.Timestamptz(3)
+  lockedUntil   DateTime? @db.Timestamptz(3)
+  leaseToken    String?
+  lastError     String?
+}
+
+model TaskFolder {
+  id        String     @id @default(cuid())
+  userId    String
+  name      String
+  position  Int        @default(0)
+  createdAt DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime   @updatedAt @db.Timestamptz(3)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lists     TaskList[]
+
+  @@unique([id, userId])
+  @@index([userId, position])
+}
+
+model TaskList {
+  id            String                         @id @default(cuid())
+  userId        String
+  folderId      String?
+  name          String
+  description   String                         @default("")
+  icon          String                         @default("list")
+  color         String                         @default("neutral")
+  position      Int                            @default(0)
+  defaultSort   String                         @default("position")
+  defaultView   String                         @default("standard")
+  showCompleted Boolean                        @default(true)
+  showDetails   Boolean                        @default(true)
+  archivedAt    DateTime?                      @db.Timestamptz(3)
+  deletedAt     DateTime?                      @db.Timestamptz(3)
+  createdAt     DateTime                       @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime                       @updatedAt @db.Timestamptz(3)
+  user          User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folder        TaskFolder?                    @relation(fields: [folderId, userId], references: [id, userId], onDelete: NoAction)
+  tasks         Task[]
+  sync          TaskListSynchronizationRecord?
+
+  @@unique([id, userId])
+  @@index([userId, position])
+}
+
+model TaskDailyAssignment {
+  id             String     @id @default(cuid())
+  userId         String
+  taskId         String
+  date           DateTime   @db.Date
+  position       Int        @default(0)
+  titleSnapshot  String
+  statusSnapshot TaskStatus
+  completedAt    DateTime?  @db.Timestamptz(3)
+  createdAt      DateTime   @default(now()) @db.Timestamptz(3)
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task           Task       @relation(fields: [taskId, userId], references: [id, userId], onDelete: Cascade)
+
+  @@unique([taskId, date])
+  @@index([userId, date, position])
+}
+
+model TaskActivityHistory {
+  id        String   @id @default(cuid())
+  taskId    String
+  userId    String
+  type      String
+  before    Json?
+  after     Json?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  task      Task     @relation(fields: [taskId, userId], references: [id, userId], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model TaskAttachment {
+  id        String   @id @default(cuid())
+  taskId    String
+  userId    String
+  name      String
+  mimeType  String
+  size      Int
+  content   Bytes
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  task      Task     @relation(fields: [taskId, userId], references: [id, userId], onDelete: Cascade)
+
+  @@index([taskId, userId])
+}
+
+model TaskSavedView {
+  id     String @id @default(cuid())
+  userId String
+  name   String
+  query  String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+}
+
+model MicrosoftConnection {
+  id           String    @id @default(cuid())
+  userId       String    @unique
+  accountId    String?
+  refreshToken String
+  lastSyncAt   DateTime? @db.Timestamptz(3)
+  error        String?
+  lockedUntil  DateTime? @db.Timestamptz(3)
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model GoogleCalendarConnection {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  subject         String
+  refreshToken    String
+  calendarId      String?
+  calendarPending Boolean   @default(false)
+  lockedUntil     DateTime? @db.Timestamptz(3)
+  lastSyncAt      DateTime? @db.Timestamptz(3)
+  error           String?
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model GoogleTaskEvent {
+  id         String @id @default(cuid())
+  userId     String
+  taskId     String @unique
+  externalId String
+  baseline   Json
+  conflict   Json?
+  task       Task   @relation(fields: [taskId, userId], references: [id, userId], onDelete: Cascade)
+  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, externalId])
+  @@unique([taskId, userId])
+}
+
+model TaskListSynchronizationRecord {
+  id         String   @id @default(cuid())
+  userId     String
+  listId     String   @unique
+  externalId String
+  baseline   Json
+  deltaLink  String?
+  conflict   Json?
+  list       TaskList @relation(fields: [listId, userId], references: [id, userId], onDelete: Cascade)
+
+  @@unique([userId, externalId])
+  @@unique([listId, userId])
+}
+
+model TaskSynchronizationRecord {
+  id             String                      @id @default(cuid())
+  userId         String
+  taskId         String                      @unique
+  externalId     String
+  externalListId String
+  baseline       Json
+  conflict       Json?
+  task           Task                        @relation(fields: [taskId, userId], references: [id, userId], onDelete: Cascade)
+  checklist      MicrosoftChecklistMapping[]
+
+  @@unique([userId, externalListId, externalId])
+  @@unique([taskId, userId])
+}
+
+model MicrosoftChecklistMapping {
+  id             String                    @id @default(cuid())
+  userId         String
+  parentTaskId   String
+  stepId         String                    @unique
+  externalTaskId String
+  externalId     String
+  baseline       Json
+  parent         TaskSynchronizationRecord @relation(fields: [parentTaskId, userId], references: [taskId, userId], onDelete: Cascade)
+  step           Task                      @relation(fields: [stepId, userId], references: [id, userId], onDelete: Cascade)
+
+  @@unique([parentTaskId, externalId])
+  @@unique([stepId, userId])
+}
+
+model DailyPlan {
+  id             String   @id @default(cuid())
+  userId         String
+  date           DateTime @db.Date
+  publishedHours Json?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@unique([id, userId])
+}
