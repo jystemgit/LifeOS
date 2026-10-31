@@ -8,7 +8,8 @@ The application owns its database but has no PostgreSQL superuser, role-creation
 or database-creation privileges. The separate bootstrap admin secret is passed
 only to PostgreSQL, not the application or operations service. This initialization
 runs only for a new empty volume; it does not rewrite existing roles.
-Only ports 80/443 are published by Caddy. No production domain, server, secrets,
+Only ports 80/443 are published by Caddy. The canonical production origin is
+`https://lifeos.augustovalmont.com`. No server credentials, runtime secrets,
 owner records or database dumps are included in GitHub or the image.
 
 The included GitHub Actions workflow runs the PostgreSQL integration suite,
@@ -53,7 +54,13 @@ cp .env.production.example .env.production
 chmod 600 .env.production
 ```
 
-Set the real `LIFEOS_DOMAIN`, `OWNER_EMAIL`, and generated secrets. Use
+Keep `LIFEOS_DOMAIN=lifeos.augustovalmont.com`, set `OWNER_EMAIL`, and generate
+the runtime secrets. Point the `lifeos` DNS A record under `augustovalmont.com`
+to the production server's public IPv4 address. Add an AAAA record only if the
+server also accepts public IPv6 traffic on ports 80/443. Do not change the
+website's root-domain DNS records.
+
+Use
 `openssl rand -hex 32` separately for both PostgreSQL passwords (URL-safe) and
 `openssl rand -base64 48` for `BETTER_AUTH_SECRET`. Keep these outside source
 control. **Preserve the auth secret across releases**: it protects sessions,
@@ -61,7 +68,8 @@ TOTP material and optional integration tokens. Changing the environment's
 PostgreSQL password does not rotate an existing database user's password.
 
 Compose derives the internal `DATABASE_URL` and canonical HTTPS auth origin.
-If deploying outside Compose, supply `DATABASE_URL`, `BETTER_AUTH_URL`,
+If deploying outside Compose, set
+`BETTER_AUTH_URL=https://lifeos.augustovalmont.com` and supply `DATABASE_URL`,
 `BETTER_AUTH_SECRET` and `OWNER_EMAIL` yourself. Run `npm run check:production`
 with those runtime variables; placeholders, HTTP origins and partial OAuth/push
 configuration are rejected. No production secrets are needed during the build.
@@ -95,8 +103,8 @@ base and object restrictions; it is **not** a nonce-based script CSP.
 
 ```bash
 docker compose --env-file .env.production -f compose.production.yml ps
-curl --fail https://YOUR_REAL_DOMAIN/api/health
-curl -I https://YOUR_REAL_DOMAIN/sign-in
+curl --fail https://lifeos.augustovalmont.com/api/health
+curl -I https://lifeos.augustovalmont.com/sign-in
 docker compose --env-file .env.production -f compose.production.yml logs --tail=100 app caddy
 ```
 
@@ -165,8 +173,12 @@ modules appear empty. Do not delete migration history.
 ## Optional services
 
 Native tasks and in-app reminders require neither OAuth nor push. Leave their
-settings empty/false unless needed. OAuth callback URLs must exactly match
-`https://YOUR_REAL_DOMAIN/api/integrations/{microsoft|google}/callback`.
+settings empty/false unless needed. Register these exact callback URLs with
+the respective providers and set the matching redirect environment variable
+only when that provider's client ID and secret are also configured:
+
+- Microsoft: `https://lifeos.augustovalmont.com/api/integrations/microsoft/callback`
+- Google: `https://lifeos.augustovalmont.com/api/integrations/google/callback`
 
 For Web Push, generate matching keys once (`operations npm run reminders:keys`),
 configure the subject and keys privately, set `TASK_PUSH_ENABLED=true`, rebuild

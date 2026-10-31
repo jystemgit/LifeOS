@@ -1,4 +1,5 @@
 import { createECDH } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { validateProductionEnvironment } from "../../scripts/validate-production-env.mjs";
 
@@ -10,7 +11,11 @@ const valid = {
 };
 
 describe("production startup configuration", () => {
-  it("accepts HTTPS, database credentials and disabled optional integrations", () => {
+  it("accepts the production template domain, credentials and disabled optional integrations", () => {
+    const template = readFileSync(new URL("../../.env.production.example", import.meta.url), "utf8");
+    const domain = template.match(/^LIFEOS_DOMAIN=(.+)$/m)?.[1];
+    expect(domain).toBe("lifeos.augustovalmont.com");
+    expect(validateProductionEnvironment({ ...valid, BETTER_AUTH_URL: `https://${domain}` })).toEqual([]);
     expect(validateProductionEnvironment(valid)).toEqual([]);
     expect(validateProductionEnvironment({ ...valid, TASK_PUSH_ENABLED: "false" })).toEqual([]);
   });

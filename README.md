@@ -39,7 +39,7 @@ provided). Copy `.env.example` to `.env`; configure the PostgreSQL password,
 matching `DATABASE_URL`, `OWNER_EMAIL`, and a strong `BETTER_AUTH_SECRET`
 (`openssl rand -base64 32`). Keep `.env` out of version control.
 `BETTER_AUTH_URL` defaults locally to `http://localhost:3000`; use the
-canonical HTTPS origin in production.
+canonical HTTPS origin `https://lifeos.augustovalmont.com` in production.
 
 ```bash
 docker compose up -d postgres
